@@ -1,0 +1,5 @@
+! pip install pyyaml==5.1
+! pip install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu102/torch1.9/index.html
+! pip install filterpy==1.4.5
+! pip install scikit-image==0.17.2
+! pip install lap==0.4.0
