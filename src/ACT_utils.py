@@ -153,6 +153,8 @@ def iou3dt(b1, b2, spatialonly=False):
 
     temporal_inter = tmax - tmin + 1
     temporal_union = max(b1[-1, 0], b2[-1, 0]) - min(b1[0, 0], b2[0, 0]) + 1
+    
+    print(np.where(b1[:, 0] == tmin)[0][0])
 
     tube1 = b1[int(np.where(b1[:, 0] == tmin)[0][0]) : int(np.where(b1[:, 0] == tmax)[0][-1]) + 1, :]
     tube2 = b2[int(np.where(b2[:, 0] == tmin)[0][-1]) : int(np.where(b2[:, 0] == tmax)[0][-1]) + 1, :]
