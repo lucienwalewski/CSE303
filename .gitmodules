@@ -1,0 +1,3 @@
+[submodule "video-classification-3d-cnn-pytorch"]
+	path = video-classification-3d-cnn-pytorch
+	url = https://github.com/kenshohara/video-classification-3d-cnn-pytorch.git
