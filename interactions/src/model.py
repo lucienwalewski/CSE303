@@ -1,6 +1,8 @@
 import os
 import sys
+import torch
 from torch import nn
+from torch.utils.data import DataLoader
 from typing import List, Tuple
 
 
@@ -16,7 +18,7 @@ class MLP(nn.Module):
 
     def forward(self, x1: torch.tensor, x2: torch.tensor) -> torch.tensor:
         '''Forwards pass '''
-        x = torch.cat(x1, x2)
+        x = torch.cat((x1, x2), dim=1)
         for layer in self.layers:
             x = torch.relu(layer(x))
         x = torch.sigmoid(x)
@@ -30,10 +32,16 @@ class MLP(nn.Module):
         '''Loads the model from a file '''
         self.load_state_dict(torch.load(path))
 
-    def train(self) -> None:
+    def train(self, dataloader: DataLoader) -> None:
         '''Trains the model'''
-        pass
+        size = len(dataloader.dataset)
+        for batch, (X, y) in enumerate(dataloader):
+            print(batch)
+
 
 def create_model(layers) -> MLP:
     '''Creates a new model'''
-    return MLP(layers)
+    model = MLP(layers)
+    if torch.cuda.is_available():
+        model = model.cuda()
+    return model
