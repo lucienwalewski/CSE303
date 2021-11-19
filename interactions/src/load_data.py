@@ -1,13 +1,14 @@
+import pandas as pd
 import os
 import sys
 import json
 import random
 import numpy as np
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Tuple
 import torch
 import torch.utils.data as data
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, random_split
 
 
 class CustomDataset(Dataset):
@@ -97,6 +98,31 @@ class CustomDataset(Dataset):
     @property
     def number_train_loops(self):
         return (len(self.negative_tracks) // self._train_neg_number) + 1
+
+
+class CustomDatasetNew(Dataset):
+    def __init__(self, instances, shuffle=False) -> None:
+        super().__init__()
+        self._instances = instances
+        if shuffle:
+            random.shuffle(self._instances)
+        self._index = -1
+
+    def __len__(self):
+        return len(self._instances)
+
+    # def __iter__(self):
+    #     return self
+
+    # def __next__(self):
+    #     if self._index >= len(self._instances) - 1:
+    #         self._index = -1
+    #         raise StopIteration
+    #     self._index += 1
+    #     return self._instances[self._index]
+
+    def __getitem__(self, index):
+        return self._instances[index]
 
 
 def load_tracks(tracks_path):
@@ -194,33 +220,68 @@ def check_duplicate_tracks(tracks: List) -> bool:
     return any((count > 1 for count in seen.values()))
 
 
-def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, negative_ratio: int = 0.75) -> Tuple[CustomDataset, CustomDataset]:
+# def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, negative_ratio: int = 0.75) -> Tuple[CustomDataset, CustomDataset]:
+#     """
+#     Creates a train and test dataset from the given paths.
+#     """
+#     tracks = load_tracks(tracks_path)
+#     interaction_pairs = load_labels(labels_path)
+#     # FIXME:
+#     # try:
+#     #     assert check_duplicate_tracks(tracks) == False
+#     # except Exception as e:
+#     #     print(f'Malformed data: Duplicate definitions of certain tracks')
+#     #     sys.exit(1)
+#     positive_instances = create_positive_instances(tracks, interaction_pairs)
+#     negative_instances = create_negative_instances(tracks, interaction_pairs)
+
+#     random.shuffle(positive_instances)
+#     random.shuffle(negative_instances)
+
+#     positive_split = int(len(positive_instances) * train_ratio)
+#     negative_split = int(len(negative_instances) * train_ratio)
+
+#     train_instances = {
+#         'positive': positive_instances[:positive_split], 'negative': negative_instances[:negative_split]}
+#     test_instances = {
+#         'positive': positive_instances[positive_split:], 'negative': negative_instances[negative_split:]}
+
+#     return CustomDataset(train_instances, train_negative_ratio=3), CustomDataset(test_instances)
+
+
+def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_size: int = 64):
     """
     Creates a train and test dataset from the given paths.
     """
     tracks = load_tracks(tracks_path)
     interaction_pairs = load_labels(labels_path)
-    # FIXME:
-    # try:
-    #     assert check_duplicate_tracks(tracks) == False
-    # except Exception as e:
-    #     print(f'Malformed data: Duplicate definitions of certain tracks')
-    #     sys.exit(1)
     positive_instances = create_positive_instances(tracks, interaction_pairs)
     negative_instances = create_negative_instances(tracks, interaction_pairs)
-
-    random.shuffle(positive_instances)
-    random.shuffle(negative_instances)
-
-    positive_split = int(len(positive_instances) * train_ratio)
-    negative_split = int(len(negative_instances) * train_ratio)
-
-    train_instances = {
-        'positive': positive_instances[:positive_split], 'negative': negative_instances[:negative_split]}
-    test_instances = {
-        'positive': positive_instances[positive_split:], 'negative': negative_instances[negative_split:]}
-
-    return CustomDataset(train_instances, train_negative_ratio=3), CustomDataset(test_instances)
+    dummy_dataset = CustomDatasetNew([(pos, 1) for pos in positive_instances] + [
+                                     (neg, 0) for neg in negative_instances], shuffle=True)
+    # random.shuffle(positive_instances)
+    # random.shuffle(negative_instances)
+    # positive_split = int(len(positive_instances) * train_ratio)
+    # negative_split = int(len(negative_instances) * train_ratio)
+    train_size = int(len(dummy_dataset) * train_ratio)
+    test_size = len(dummy_dataset) - train_size
+    train_set, val_set = random_split(dummy_dataset, [train_size, test_size])
+    train_classes = [label for _, label in train_set]
+    class_count = Counter(train_classes)
+    class_weights = torch.Tensor([count / len(train_classes)
+                                 for count in pd.Series(class_count).sort_index().values])
+    class_weights = torch.Tensor([0.01, 0.99])
+    sample_weights = [0] * len(train_set)
+    for idx, (_, label) in enumerate(train_set):
+        class_weight = class_weights[label]
+        sample_weights[idx] = class_weight
+    print(sample_weights)
+    train_sampler = WeightedRandomSampler(
+        weights=sample_weights, num_samples=len(train_set), replacement=False)
+    print(list(train_sampler))
+    train_loader = DataLoader(
+        train_set.dataset, batch_size=batch_size, sampler=train_sampler)
+    return train_loader, val_set.dataset
 
 
 def create_dataloaders(tracks_path, labels_path, batch_size=64, shuffle=True, num_workers=1, ratio=3) -> Tuple[DataLoader, DataLoader]:
@@ -230,9 +291,9 @@ def create_dataloaders(tracks_path, labels_path, batch_size=64, shuffle=True, nu
     train_dataset, test_dataset = create_datasets(
         tracks_path, labels_path)
 
-    # return train_dataset, test_dataset
-    train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-    return train_dataloader, test_dataloader
+    return train_dataset, test_dataset
+    # train_dataloader = DataLoader(
+    #     train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    # test_dataloader = DataLoader(
+    #     test_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    # return train_dataloader, test_dataloader

@@ -9,12 +9,20 @@ from load_data import create_dataloaders
 if __name__ == '__main__':
 
     # Load the dataset
-    tracks_path = os.path.join(os.path.dirname(__file__), '../data/tracks.json')
-    labels_path = os.path.join(os.path.dirname(__file__), '../data/labels.json')
-    train_dataloader, test_dataloader = create_dataloaders(tracks_path, labels_path)
-    for i, (x1, x2, y) in enumerate(train_dataloader):
-        print(i, x1.shape, y.shape)
+    tracks_path = os.path.join(
+        os.path.dirname(__file__), '../data/tracks.json')
+    labels_path = os.path.join(
+        os.path.dirname(__file__), '../data/labels.json')
+    train_dataloader, test_dataloader = create_dataloaders(
+        tracks_path, labels_path)
+    for i, (X, y) in enumerate(train_dataloader):
+        # print(X)
+        print(y)
+        # print(X.shape, y.shape)
         break
+    # for i, (x1, x2, y) in enumerate(train_dataloader):
+    #     print(i, x1.shape, y.shape)
+    #     break
 
     # # Create the model
     # layers = [1024, 256, 1]
