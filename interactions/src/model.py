@@ -5,8 +5,7 @@ from torch import nn
 from torch.utils import data
 from torch.utils.data import DataLoader
 from typing import List, Tuple
-
-from interactions.src.load_data import Data
+from load_data import CustomDataset
 
 
 class MLP(nn.Module):
@@ -35,10 +34,10 @@ class MLP(nn.Module):
         '''Loads the model from a file '''
         self.load_state_dict(torch.load(path))
 
-    def train_loop(self, dataloader: DataLoader) -> None:
+    def train_loop(self) -> None:
         '''Runs a single training epoch'''
-        size = len(dataloader.dataset)
-        for batch, (x1, x2, y) in enumerate(dataloader):
+        size = self._train_dataloader.train_size
+        for batch, (x1, x2, y) in enumerate(self._train_dataloader):
             pred = self.forward(x1, x2)
             loss = self.loss(pred, y)
 
@@ -52,13 +51,15 @@ class MLP(nn.Module):
                 loss, current = loss.item(), batch * size
                 print(f'loss: {loss:5f} [{current:>5d}/{size:>5d}]')
             
-    def train(self, train_dataloader: DataLoader, test_dataloader: DataLoader, epochs: int=10) -> None:
+    def train(self, train_dataset: CustomDataset, test_dataset: CustomDataset, epochs: int=10) -> None:
         '''Trains the model'''
+        self._train_dataloader = train_dataset
+        self._test_dataloader = test_dataset
         for epoch in range(epochs):
-            self.train_loop(train_dataloader)
-            self.test(test_dataloader)
+            self.train_loop()
+            self.test()
 
-    def test(self, dataloader: DataLoader) -> None:
+    def test(self, dataloader: CustomDataset) -> None:
         '''Tests the model'''
         size = len(dataloader.dataset)
         num_batches = len(dataloader)
