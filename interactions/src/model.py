@@ -18,8 +18,6 @@ class MLP(nn.Module):
              for i in range(len(layers) - 1)]
         )
         self.init_weights()
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.1)
-        self.loss = nn.BCELoss()
 
     def forward(self, x1: torch.tensor, x2: torch.tensor) -> torch.tensor:
         '''Forwards pass '''
