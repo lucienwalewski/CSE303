@@ -21,3 +21,4 @@ The dictionary of tracks has the following keys:
 - **version**: the version of the track
 - **segment**: the segment of the track
 - **features**: the 1024x1 feature vector 
+- **episode**: the episode of the track

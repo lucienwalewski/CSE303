@@ -1,50 +1,56 @@
 import os
 import sys
 import numpy as np
+import wandb
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader, Dataset
+# from torchvision.datasets import MNIST
 from torch.utils.tensorboard import SummaryWriter
 
 from model import create_model, train
-from load_data import create_dataloaders
+from load_data import create_dataloaders, CustomDataset
 
 if __name__ == '__main__':
 
-    # Load the dataset
-    tracks_path = os.path.join(
-        os.path.dirname(__file__), '../data/tracks.json')
-    labels_path = os.path.join(
-        os.path.dirname(__file__), '../data/labels.json')
-    train_dataloader, test_dataloader = create_dataloaders(
-        tracks_path, labels_path)
-    
-    # Create the model
-    layers = [1024, 256, 1]
-    model = create_model(layers)
+    # wandb.init(project="my-test-project", entity="lucienwa")
+    # wandb.config = {
+    #     "learning_rate": 0.001,
+    #     "epochs": 100,
+    #     "batch_size": 128
+    # }
 
-    writer = SummaryWriter('log')
-    writer.add_graph(model, (torch.rand(1, 512), torch.rand(1, 512)))
-    writer.close()
+    pca = False
+
+    # Load the dataset
+    if pca:
+        dir = '../data/features_pca.json'
+    else:
+        dir = '../data/features.json'
+    data_path = os.path.join(
+        os.path.dirname(__file__), dir)
+    train_dataloader, test_dataloader = create_dataloaders(
+        data_path)
+    print(f'Loaded data from {data_path} into memory')
+
+    # Create the model
+    if pca:
+        # layers = [200, 10, 1]
+        layers = [4, 1]
+    else:
+        layers = [1024, 256, 1]
+    model = create_model(layers)
+    model.train()
+
+    writer = SummaryWriter()
 
     # Train the model
     loss = nn.BCELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-    train(model, train_dataloader, test_dataloader, loss, optimizer)
 
-    # Test random tensors
-    # x1 = torch.randn(64, 512)
-    # x2 = torch.randn(64, 512)
-    # y = torch.randn(64, 1)
-    # y = y.to(torch.float)
-    # y = y.reshape(-1, 1)
-    # pred = model(x1, x2)
-    # print(pred)
-    # print(loss(pred, y.reshape(-1, 1)))
-    # for param in model.parameters():
-    #     print(param.shape)
-    #     print(param)
+    train(model, train_dataloader, test_dataloader,
+          loss, optimizer, writer, epochs=60)
+
+    writer.close()
 
     # Save the model
-

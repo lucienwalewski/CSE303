@@ -44,17 +44,35 @@ def create_positive_instances(tracks: List, labels: List) -> List:
     """
     Creates positive instances from the given tracks and labels.
     """
-    positive_instances = []
-    for i, interaction1 in enumerate(tracks):
-        for j, interaction2 in enumerate(tracks[i+1:]):
-            j += i + 1
-            ti1, ti2 = interaction1['track1'], interaction1['track2']
-            tj1, tj2 = interaction2['track1'], interaction2['track2']
+    pass
+    # positive_instances = []
+    # for i, interaction1 in enumerate(tracks):
+    #     for j, interaction2 in enumerate(tracks[i+1:]):
+    #         j += i + 1
+    #         ti1, ti2 = interaction1['track1'], interaction1['track2']
+    #         tj1, tj2 = interaction2['track1'], interaction2['track2']
 
-            if ti1 == tj2 and ti2 == tj1 and interaction1['segment'] == interaction2['segment'] and ([ti1, ti2] in labels or [ti2, ti1] in labels):
-                positive_instances.append(
-                    (torch.tensor(interaction1['features']), torch.tensor(interaction2['features'])))
-    return positive_instances
+    #         if ti1 == tj2 and ti2 == tj1 and interaction1['segment'] == interaction2['segment'] and
+
+    # positive_instances = []
+    # sample = []
+    # for i, interaction1 in enumerate(tracks):
+    #     for j, interaction2 in enumerate(tracks[i+1:]):
+    #         j += i + 1
+    #         ti1, ti2 = interaction1['track1'], interaction1['track2']
+    #         tj1, tj2 = interaction2['track1'], interaction2['track2']
+
+    #         if ti1 == tj2 and ti2 == tj1 and interaction1['segment'] == interaction2['segment'] and ([ti1, ti2] in labels or [ti2, ti1] in labels):
+    #             positive_instances.append(
+    #                 (torch.tensor(interaction1['features']), torch.tensor(interaction2['features'])))
+    #             if ti1 == 69 and ti2 == 70:
+    #                 sample.append(
+    #                     {'track1': ti1, 'track2': ti2, 'segment': interaction1['segment'], 'features1': interaction1['features'], 'features2': interaction2['features']})
+
+    # with open('sample.json', 'w') as f:
+    #     json.dump(sample, f)
+
+    # return positive_instances
 
 
 def create_type1_negatives(tracks: List, labels: List) -> List:
@@ -122,9 +140,7 @@ def check_duplicate_tracks(tracks: List) -> bool:
     return any((count > 1 for count in seen.values()))
 
 
-
-
-def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_size: int = 64, negative_frac: float = 0.75):
+def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_size: int = 64, negative_frac: float = 0.5):
     """
     Creates a train and test dataset from the given paths.
     """
@@ -136,14 +152,15 @@ def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_si
     positive_instances = create_positive_instances(tracks, interaction_pairs)
     negative_instances = create_negative_instances(tracks, interaction_pairs)
 
-    #Create the full dataset
+    # Create the full dataset
     dataset = CustomDataset([(pos, 1) for pos in positive_instances] + [
-                                     (neg, 0) for neg in negative_instances], shuffle=True)
+        (neg, 0) for neg in negative_instances], shuffle=True)
 
     # Split the dataset into train and test
     train_size = int(len(dataset) * train_ratio)
     test_size = len(dataset) - train_size
-    train_set, val_set = random_split(dataset, [train_size, test_size], generator=torch.Generator().manual_seed(0))
+    train_set, val_set = random_split(
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(0))
 
     # Create weighted random sampler for the train set
     train_classes = [label for _, label in train_set]
@@ -163,135 +180,51 @@ def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_si
     return train_loader, DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
 
-def create_dataloaders(tracks_path, labels_path, batch_size=64, shuffle=True, num_workers=1, ratio=3) -> Tuple[DataLoader, DataLoader]:
+def create_datasets2(path, train_ratio: float = 0.75, batch_size: int = 64, negative_frac: float = 0.75):
+    data = json.load(open(path))
+    positive_instances = [(torch.tensor(ex['person1_features']), torch.tensor(ex['person2_features']))
+                          for ex in data if ex['label'] == 1]
+    negative_instances = [(torch.tensor(ex['person1_features']), torch.tensor(ex['person2_features']))
+                          for ex in data if ex['label'] == 0]
+
+    # Create the full dataset
+    dataset = CustomDataset([(pos, 1) for pos in positive_instances] + [
+        (neg, 0) for neg in negative_instances], shuffle=True)
+
+    # Split the dataset into train and test
+    train_size = int(len(dataset) * train_ratio)
+    test_size = len(dataset) - train_size
+    train_set, val_set = random_split(
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(0))
+
+    val_pos = [ex for ex, label in val_set if label == 1]
+    val_neg = [ex for ex, label in val_set if label == 0]
+    val_set = CustomDataset([(pos, 1) for pos in val_pos] + [(neg, 0)
+                            for neg in random.sample(val_neg, len(val_pos))])
+
+    # Create weighted random sampler for the train set
+    train_classes = [label for _, label in train_set]
+    class_count = Counter(train_classes)
+    class_weights = torch.Tensor([len(train_classes) / count
+                                 for count in pd.Series(class_count).sort_index().values])
+    class_weights[0] *= ((1 / (1 - negative_frac)) - 1)
+
+    sample_weights = [0] * len(train_set)
+    for idx, (_, label) in enumerate(train_set):
+        class_weight = class_weights[label]
+        sample_weights[idx] = class_weight
+    train_sampler = WeightedRandomSampler(
+        weights=sample_weights, num_samples=len(train_set), replacement=True)
+    train_loader = DataLoader(
+        train_set, batch_size=batch_size, sampler=train_sampler, shuffle=False)
+    return train_loader, DataLoader(val_set, batch_size=batch_size, shuffle=False)
+
+
+def create_dataloaders(tracks_path, batch_size=64, shuffle=True, num_workers=1, ratio=3) -> Tuple[DataLoader, DataLoader]:
     """
     Creates dataloaders from the given paths.
     """
-    train_dataset, test_dataset = create_datasets(
-        tracks_path, labels_path)
+    train_dataset, test_dataset = create_datasets2(
+        tracks_path)
 
     return train_dataset, test_dataset
-
-
-## Legacy code 
-
-
-
-# def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, negative_ratio: int = 0.75) -> Tuple[CustomDataset, CustomDataset]:
-#     """
-#     Creates a train and test dataset from the given paths.
-#     """
-#     tracks = load_tracks(tracks_path)
-#     interaction_pairs = load_labels(labels_path)
-#     # FIXME:
-#     # try:
-#     #     assert check_duplicate_tracks(tracks) == False
-#     # except Exception as e:
-#     #     print(f'Malformed data: Duplicate definitions of certain tracks')
-#     #     sys.exit(1)
-#     positive_instances = create_positive_instances(tracks, interaction_pairs)
-#     negative_instances = create_negative_instances(tracks, interaction_pairs)
-
-#     random.shuffle(positive_instances)
-#     random.shuffle(negative_instances)
-
-#     positive_split = int(len(positive_instances) * train_ratio)
-#     negative_split = int(len(negative_instances) * train_ratio)
-
-#     train_instances = {
-#         'positive': positive_instances[:positive_split], 'negative': negative_instances[:negative_split]}
-#     test_instances = {
-#         'positive': positive_instances[positive_split:], 'negative': negative_instances[negative_split:]}
-
-#     return CustomDataset(train_instances, train_negative_ratio=3), CustomDataset(test_instances)
-
-
-
-
-# class CustomDataset(Dataset):
-#     """
-#     Loads the data from the data directory.
-
-#     - Instances: List of tuples (x1, x2, y)
-#     where with x1, x2 the two input tensors and 
-#     y the ground truth label.
-#     """
-
-#     def __init__(self, instances: Dict, train_negative_ratio: int = 3) -> None:
-#         super().__init__()
-#         self.positive_tracks = [(x1, x2)
-#                                 for x1, x2 in instances['positive']]
-#         self.negative_tracks = [(x1, x2)
-#                                 for x1, x2 in instances['negative']]
-#         self._positive_index = -1
-#         self._negative_index = -1
-#         self._current_loop_index = 0
-#         self._negative_ratio = train_negative_ratio
-#         self._train_loop_count = 0
-#         # Number of negative training instances per train loop
-#         self._train_neg_number = train_negative_ratio * \
-#             len(self.positive_tracks)
-
-#     def __getitem__(self, index):
-#         return self.tracks[index], self.labels[index]
-
-#     def __iter__(self):
-#         return self
-
-#     def __next__(self):
-#         if self._train_loop_count < self.number_train_loops - 1:
-#             if self._current_loop_index >= self.train_loop_size:
-#                 self._positive_index = -1
-#                 self._current_loop_index = 0
-#                 self._train_loop_count += 1
-#                 raise StopIteration
-#             if (self._negative_index + self._positive_index + 1) % (self._negative_ratio + 1) == 0:
-#                 self._positive_index += 1
-#                 self._current_loop_index += 1
-#                 return self.positive_tracks[self._positive_index], 1
-#             self._negative_index += 1
-#             self._current_loop_index += 1
-#             return self.negative_tracks[self._negative_index], 0
-#         if self._negative_index >= len(self.negative_tracks) - 1:
-#             self._positive_index = -1
-#             self._negative_index = -1
-#             self._current_loop_index = -1
-#             self._train_loop_count = 0
-#             raise StopIteration
-#         # print(self._positive_index, self._negative_index, self._current_loop_index)
-#         if (self._negative_index + self._positive_index + 1) % (self._negative_ratio + 1) == 0:
-#             self._positive_index += 1
-#             self._current_loop_index += 1
-#             return self.positive_tracks[self._positive_index], 1
-#         self._negative_index += 1
-#         self._current_loop_index += 1
-#         return self.negative_tracks[self._negative_index], 0
-
-#     def __len__(self):
-#         return len(self.positive_tracks) + len(self.negative_tracks)
-
-#     @property
-#     def number_positives(self):
-#         return len(self.positive_tracks)
-
-#     @property
-#     def number_negatives(self):
-#         return len(self.negative_tracks)
-
-#     @property
-#     def train_loop_size(self):
-#         '''Number of instances in a single train loop'''
-#         return len(self.positive_tracks) + self._train_neg_number
-
-#     @property
-#     def train_neg_size(self):
-#         '''Number of negative training instances per train loop'''
-#         return self._train_neg_number
-
-#     @property
-#     def entire_size(self):
-#         return len(self)
-
-#     @property
-#     def number_train_loops(self):
-#         return (len(self.negative_tracks) // self._train_neg_number) + 1
