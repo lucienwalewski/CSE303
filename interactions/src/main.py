@@ -21,6 +21,7 @@ if __name__ == '__main__':
     # }
 
     pca = False
+    train_model = True
 
     # Load the dataset
     if pca:
@@ -35,8 +36,7 @@ if __name__ == '__main__':
 
     # Create the model
     if pca:
-        # layers = [200, 10, 1]
-        layers = [4, 1]
+        layers = [200, 10, 1]
     else:
         layers = [1024, 256, 1]
     model = create_model(layers)
@@ -54,3 +54,4 @@ if __name__ == '__main__':
     writer.close()
 
     # Save the model
+    model.save('models/model.pt')

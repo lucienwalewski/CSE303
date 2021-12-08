@@ -25,8 +25,6 @@ class MLP(nn.Module):
             x1 = nn.functional.normalize(x1, dim=1)
             x2 = nn.functional.normalize(x2)
         x = torch.cat((x1, x2), dim=1)
-        # features_norm = np.array(
-        #     x) / np.sqrt(np.sum(np.array(x) ** 2, -1, keepdims=True))
         for layer in self.layers:
             x = torch.tanh(layer(x))
         x = torch.sigmoid(x)
@@ -63,8 +61,6 @@ def train_loop(model, train_dataloader, loss_fn, optimizer) -> None:
         loss.backward()
         optimizer.step()
 
-        # print(x1)
-        # print(pred)
         pred = (pred > 0.5).float()
         correct += (pred == y).type(torch.float).sum().item()
 
@@ -93,15 +89,12 @@ def train(model, train_dataset: DataLoader, test_dataset: DataLoader, loss_fn, o
         writer.add_scalar('test/recall', recall, epoch)
         writer.add_scalar('test/f1', f1, epoch)
 
-
-
 def test(model, dataloader: DataLoader, loss_fn) -> Tuple:
     '''Tests the model'''
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     true_positives, true_negatives, false_positives, false_negatives = 0, 0, 0, 0
-    test_loss, correct = 0, 0
-    positives = 0
+    test_loss = 0
 
     with torch.no_grad():
         for (x1, x2), y in dataloader:
@@ -112,21 +105,31 @@ def test(model, dataloader: DataLoader, loss_fn) -> Tuple:
             test_loss += loss_fn(pred, y).item()
             pred = (pred > 0.5).float()
 
-            true_positives += ((pred == 1) & (y == 1)).type(torch.float).sum().item()
-            true_negatives += ((pred == 0) & (y == 0)).type(torch.float).sum().item()
+            true_positives += ((pred == 1.) & (y == 1.)
+                               ).type(torch.float).sum().item()
+            true_negatives += ((pred == 0.) & (y == 0.)
+                               ).type(torch.float).sum().item()
 
-            false_positives += ((pred == 1) & (y == 0)).type(torch.float).sum().item()
-            false_negatives += ((pred == 0) & (y == 1)).type(torch.float).sum().item()
+            false_positives += ((pred == 1.) & (y == 0.)
+                                ).type(torch.float).sum().item()
+            false_negatives += ((pred == 0.) & (y == 1.)
+                                ).type(torch.float).sum().item()
 
-
-    test_loss /= num_batches
-    recall = true_positives / (true_positives + false_negatives)
-    precision = true_positives / (true_positives + false_positives)
-    f1 = 2 * (precision * recall) / (precision + recall)
-    accuracy = 100 * ((true_positives + true_negatives) / (true_positives + true_negatives + false_positives + false_negatives))
+    try:
+        test_loss /= num_batches
+        recall = true_positives / (true_positives + false_negatives)
+        precision = true_positives / (true_positives + false_positives)
+        f1 = 2 * (precision * recall) / (precision + recall)
+        accuracy = 100 * ((true_positives + true_negatives) /
+                          (true_positives + true_negatives + false_positives + false_negatives))
+    except ZeroDivisionError:
+        test_loss = 0
+        accuracy = 0
+        recall = 0
+        precision = 0
+        f1 = 0
     print(
         f'Test Error: \n Accuracy: {(accuracy):>0.1f}%, Avg loss: {test_loss:>8f}')
-    print(f'Percentage of negatives: {(true_negatives + false_positives) / (true_positives + true_negatives + false_positives + false_negatives)*100:>1f}%\n')
     return test_loss, accuracy, precision, recall, f1
 
 

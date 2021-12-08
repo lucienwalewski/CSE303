@@ -140,47 +140,7 @@ def check_duplicate_tracks(tracks: List) -> bool:
     return any((count > 1 for count in seen.values()))
 
 
-def create_datasets(tracks_path, labels_path, train_ratio: float = 0.8, batch_size: int = 64, negative_frac: float = 0.5):
-    """
-    Creates a train and test dataset from the given paths.
-    """
-    # Load the tracks and labels
-    tracks = load_tracks(tracks_path)
-    interaction_pairs = load_labels(labels_path)
-
-    # Create the positive and negative instances
-    positive_instances = create_positive_instances(tracks, interaction_pairs)
-    negative_instances = create_negative_instances(tracks, interaction_pairs)
-
-    # Create the full dataset
-    dataset = CustomDataset([(pos, 1) for pos in positive_instances] + [
-        (neg, 0) for neg in negative_instances], shuffle=True)
-
-    # Split the dataset into train and test
-    train_size = int(len(dataset) * train_ratio)
-    test_size = len(dataset) - train_size
-    train_set, val_set = random_split(
-        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(0))
-
-    # Create weighted random sampler for the train set
-    train_classes = [label for _, label in train_set]
-    class_count = Counter(train_classes)
-    class_weights = torch.Tensor([len(train_classes) / count
-                                 for count in pd.Series(class_count).sort_index().values])
-    class_weights[0] *= ((1 / (1 - negative_frac)) - 1)
-
-    sample_weights = [0] * len(train_set)
-    for idx, (_, label) in enumerate(train_set):
-        class_weight = class_weights[label]
-        sample_weights[idx] = class_weight
-    train_sampler = WeightedRandomSampler(
-        weights=sample_weights, num_samples=len(train_set), replacement=True)
-    train_loader = DataLoader(
-        train_set, batch_size=batch_size, sampler=train_sampler, shuffle=False)
-    return train_loader, DataLoader(val_set, batch_size=batch_size, shuffle=False)
-
-
-def create_datasets2(path, train_ratio: float = 0.75, batch_size: int = 64, negative_frac: float = 0.75):
+def create_datasets(path, train_ratio: float = 0.75, batch_size: int = 64, negative_frac: float = 0.75):
     data = json.load(open(path))
     positive_instances = [(torch.tensor(ex['person1_features']), torch.tensor(ex['person2_features']))
                           for ex in data if ex['label'] == 1]
@@ -200,7 +160,7 @@ def create_datasets2(path, train_ratio: float = 0.75, batch_size: int = 64, nega
     val_pos = [ex for ex, label in val_set if label == 1]
     val_neg = [ex for ex, label in val_set if label == 0]
     val_set = CustomDataset([(pos, 1) for pos in val_pos] + [(neg, 0)
-                            for neg in random.sample(val_neg, len(val_pos))])
+                            for neg in random.sample(val_neg, len(val_pos))], shuffle=True)
 
     # Create weighted random sampler for the train set
     train_classes = [label for _, label in train_set]
@@ -224,7 +184,7 @@ def create_dataloaders(tracks_path, batch_size=64, shuffle=True, num_workers=1, 
     """
     Creates dataloaders from the given paths.
     """
-    train_dataset, test_dataset = create_datasets2(
+    train_dataset, test_dataset = create_datasets(
         tracks_path)
 
     return train_dataset, test_dataset
