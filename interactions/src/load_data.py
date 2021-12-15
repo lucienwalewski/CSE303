@@ -25,6 +25,12 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         return self._instances[index]
 
+    def save(self, path):
+        data = [[np.array(feature1), np.array(feature2), label]
+                for (feature1, feature2), label in self._instances]
+        df = pd.DataFrame(data, columns=['feature1', 'feature2', 'label'])
+        df.to_json(path, orient='records')
+
 
 def load_tracks(tracks_path):
     """
@@ -38,41 +44,6 @@ def load_labels(labels_path):
     Loads the labels from the given path.
     """
     return json.load(open(labels_path, 'r'))
-
-
-def create_positive_instances(tracks: List, labels: List) -> List:
-    """
-    Creates positive instances from the given tracks and labels.
-    """
-    pass
-    # positive_instances = []
-    # for i, interaction1 in enumerate(tracks):
-    #     for j, interaction2 in enumerate(tracks[i+1:]):
-    #         j += i + 1
-    #         ti1, ti2 = interaction1['track1'], interaction1['track2']
-    #         tj1, tj2 = interaction2['track1'], interaction2['track2']
-
-    #         if ti1 == tj2 and ti2 == tj1 and interaction1['segment'] == interaction2['segment'] and
-
-    # positive_instances = []
-    # sample = []
-    # for i, interaction1 in enumerate(tracks):
-    #     for j, interaction2 in enumerate(tracks[i+1:]):
-    #         j += i + 1
-    #         ti1, ti2 = interaction1['track1'], interaction1['track2']
-    #         tj1, tj2 = interaction2['track1'], interaction2['track2']
-
-    #         if ti1 == tj2 and ti2 == tj1 and interaction1['segment'] == interaction2['segment'] and ([ti1, ti2] in labels or [ti2, ti1] in labels):
-    #             positive_instances.append(
-    #                 (torch.tensor(interaction1['features']), torch.tensor(interaction2['features'])))
-    #             if ti1 == 69 and ti2 == 70:
-    #                 sample.append(
-    #                     {'track1': ti1, 'track2': ti2, 'segment': interaction1['segment'], 'features1': interaction1['features'], 'features2': interaction2['features']})
-
-    # with open('sample.json', 'w') as f:
-    #     json.dump(sample, f)
-
-    # return positive_instances
 
 
 def create_type1_negatives(tracks: List, labels: List) -> List:
@@ -161,6 +132,7 @@ def create_datasets(path, train_ratio: float = 0.75, batch_size: int = 64, negat
     val_neg = [ex for ex, label in val_set if label == 0]
     val_set = CustomDataset([(pos, 1) for pos in val_pos] + [(neg, 0)
                             for neg in random.sample(val_neg, len(val_pos))], shuffle=True)
+    val_set.save('data/val_set.json')
 
     # Create weighted random sampler for the train set
     train_classes = [label for _, label in train_set]
